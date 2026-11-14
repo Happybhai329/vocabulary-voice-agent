@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lingo — Voice Vocabulary Tutor</title>
+<meta name="description" content="A voice agent that quizzes you on English vocabulary, out loud." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>" />
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<div class="bg-glow" aria-hidden="true"></div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M12 3v18M8 7v10M16 7v10M4 10v4M20 10v4" />
+        </svg>
+      </div>
+      <div>
+        <h1>Lingo</h1>
+        <p>voice vocabulary tutor</p>
+      </div>
+    </div>
+
+    <div class="stats" aria-live="polite">
+      <div class="stat">
+        <span class="stat-value" id="scoreValue">0</span>
+        <span class="stat-label">points</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="streakValue">0</span>
+        <span class="stat-label">streak</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="roundValue">0/5</span>
+        <span class="stat-label">words</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="agent-panel">
+      <button id="orb" class="orb" type="button" aria-label="Tap to answer">
+        <span class="ring ring-1"></span>
+        <span class="ring ring-2"></span>
+        <span class="orb-core">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="2.5" width="6" height="11" rx="3" />
+            <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" />
+          </svg>
+        </span>
+      </button>
+
+      <p id="status" class="status" aria-live="polite">Tap “Start session” and I’ll quiz you out loud.</p>
+      <p id="liveText" class="live-text" aria-live="polite"></p>
+
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0" id="progress">
+        <span id="progressFill"></span>
+      </div>
+
+      <div class="controls">
+        <button id="startBtn" class="btn btn-primary" type="button">Start session</button>
+        <button id="repeatBtn" class="btn" type="button" title="Say the question again">Repeat</button>
+        <button id="skipBtn" class="btn" type="button">Skip word</button>
+        <button id="typeToggle" class="btn btn-ghost" type="button">Type instead</button>
+      </div>
+
+      <form id="typeForm" class="type-form" hidden>
+        <input id="typeInput" type="text" autocomplete="off" placeholder="Type the word you would say…" aria-label="Your answer" />
+        <button class="btn btn-primary" type="submit">Send</button>
+      </form>
+    </section>
+
+    <section class="side">
+      <div class="card clue-card" id="clueCard">
+        <div class="card-head">
+          <span class="tag" id="clueTag">ready</span>
+          <span class="word" id="clueWord">—</span>
+        </div>
+        <p class="definition" id="clueDefinition">Press start to hear your first clue.</p>
+        <p class="example" id="clueExample"></p>
+      </div>
+
+      <div class="card transcript-card">
+        <h2>Conversation</h2>
+        <div class="transcript" id="transcript">
+          <p class="empty-note">Your conversation with Lingo will appear here.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Voice in / voice out runs in your browser — Chrome or Edge recommended.</span>
+    <span class="dot" aria-hidden="true">•</span>
+    <button id="muteBtn" class="link-btn" type="button">Mute agent voice</button>
+  </footer>
+</div>
+
+<script src="./app.js"></script>
+</body>
+</html>
