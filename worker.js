@@ -97,7 +97,8 @@ export async function generateWords({ apiKey, count = 5, level = "B2", model = M
   if (!apiKey) throw new Error("missing_api_key");
   const safeCount = Math.min(Math.max(Number(count) || 5, 3), 8);
   const prompt = buildPrompt(safeCount, level);
-  const models = model === MODEL ? [MODEL, "gemini-flash-lite-latest"] : [model];
+  // Free-tier capacity moves around, so try a few models before giving up.
+  const models = model === MODEL ? [MODEL, "gemini-2.5-flash-lite", "gemini-3.5-flash"] : [model];
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -107,14 +108,14 @@ export async function generateWords({ apiKey, count = 5, level = "B2", model = M
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
           const words = sanitizeWords(await callModel(current, apiKey, prompt, controller.signal), safeCount);
-          if (words.length >= 3) return words;
+          if (words.length >= 3) return { words, model: current };
           lastError = new Error("thin_response");
           break; // a second try on the same model rarely helps here
         } catch (error) {
           lastError = error;
           const retryable = error.status === 429 || error.status === 503 || error.status === 500;
           if (!retryable || controller.signal.aborted) break;
-          await sleep(400);
+          await sleep(attempt === 0 ? 300 : 800);
         }
       }
     }
@@ -178,8 +179,8 @@ async function handleRound(request, env) {
   }
 
   try {
-    const words = await generateWords({ apiKey, count: payload.count, level: payload.level });
-    return json({ words, source: "ai", model: MODEL }, 200, cors);
+    const { words, model: usedModel } = await generateWords({ apiKey, count: payload.count, level: payload.level });
+    return json({ words, source: "ai", model: usedModel }, 200, cors);
   } catch (error) {
     const detail = error && error.detail ? `${error.message}: ${error.detail}` : String((error && error.message) || error);
     return json({ error: "ai_failed", detail }, 502, cors);

@@ -63,8 +63,8 @@ async function handleRound(req, res) {
   }
 
   try {
-    const words = await generateWords({ apiKey, count: payload.count, level: payload.level });
-    res.writeHead(200, headers).end(JSON.stringify({ words, source: "ai" }));
+    const { words, model } = await generateWords({ apiKey, count: payload.count, level: payload.level });
+    res.writeHead(200, headers).end(JSON.stringify({ words, source: "ai", model }));
   } catch (error) {
     res.writeHead(502, headers).end(
       JSON.stringify({ error: "ai_failed", detail: String((error && error.message) || error) })
