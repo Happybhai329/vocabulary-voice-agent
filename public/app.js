@@ -26,6 +26,8 @@ const WORDS = [
 ];
 
 const ROUND_SIZE = 5;
+// Below this recogniser confidence we ask the learner to repeat instead of grading.
+const LOW_CONFIDENCE = 0.55;
 
 const els = {
   orb: document.getElementById("orb"),
@@ -48,6 +50,15 @@ const els = {
   clueExample: document.getElementById("clueExample"),
   transcript: document.getElementById("transcript"),
   muteBtn: document.getElementById("muteBtn"),
+  demoBadge: document.getElementById("demoBadge"),
+  micCheck: document.getElementById("micCheck"),
+  micAllow: document.getElementById("micAllow"),
+  micDemo: document.getElementById("micDemo"),
+  micSkip: document.getElementById("micSkip"),
+  micHeard: document.getElementById("micHeard"),
+  levelFill: document.getElementById("levelFill"),
+  micCheckBtn: document.getElementById("micCheckBtn"),
+  demoFooterBtn: document.getElementById("demoFooterBtn"),
 };
 
 const state = {
@@ -70,6 +81,8 @@ const state = {
   micBlocked: false,
   wordClosed: false,
   typingBySystem: false,
+  demo: false,
+  repaired: false,
 };
 
 /* ---------------- speech output ---------------- */
@@ -238,11 +251,14 @@ function onMicPermissionChange(permission) {
 /* ---------------- speech input ---------------- */
 
 const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+// The intended audience speaks Indian English; en-US mishears them noticeably.
+const RECOGNITION_LANG = "en-IN";
+let recognitionLang = RECOGNITION_LANG;
 
 function buildRecognition() {
   if (!SpeechRecognitionCtor) return null;
   const recognition = new SpeechRecognitionCtor();
-  recognition.lang = "en-US";
+  recognition.lang = recognitionLang;
   recognition.continuous = false;
   recognition.interimResults = true;
   recognition.maxAlternatives = 4;
@@ -255,13 +271,18 @@ function buildRecognition() {
     // A late result after we stopped listening must not answer the old word.
     if (state.mode !== "listening") return;
     let interim = "";
+    let bestConfidence = 0;
     const finals = [];
     const alternatives = [];
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
       const result = event.results[i];
       if (result.isFinal) {
         finals.push(result[0].transcript);
-        for (let a = 0; a < result.length; a += 1) alternatives.push(result[a].transcript);
+        for (let a = 0; a < result.length; a += 1) {
+          alternatives.push(result[a].transcript);
+          const score = result[a].confidence;
+          if (typeof score === "number" && score > bestConfidence) bestConfidence = score;
+        }
       } else {
         interim += result[0].transcript;
       }
@@ -270,13 +291,24 @@ function buildRecognition() {
     const finalText = finals.join(" ").trim();
     if (finalText) {
       els.liveText.textContent = "";
-      handleAnswer(finalText, alternatives);
+      handleAnswer(finalText, alternatives, undefined, bestConfidence);
     }
   };
 
   recognition.onerror = (event) => {
     const code = (event && event.error) || "unknown";
     if (code === "aborted") return;
+
+    // Some engines lack en-IN: retry once in en-US rather than losing the mic.
+    if (code === "language-not-supported" && recognitionLang !== "en-US") {
+      recognitionLang = "en-US";
+      state.recognition = buildRecognition();
+      state.mode = "idle";
+      setTimeout(() => {
+        if (state.mode === "idle" && state.current && !state.wordClosed) startListening();
+      }, 150);
+      return;
+    }
 
     if (code === "not-allowed" || code === "service-not-allowed") {
       blockMic(
@@ -341,6 +373,12 @@ function micUnavailable() {
 
 async function startListening() {
   if (!state.current || state.mode === "over") return;
+
+  if (state.demo) {
+    scheduleDemoAnswer();
+    return;
+  }
+
   const request = ++state.listenRequest;
 
   if (state.micBlocked) {
@@ -405,6 +443,29 @@ function stopListening() {
   if (state.recognition) {
     try { state.recognition.stop(); } catch (e) { /* ignore */ }
   }
+}
+
+/* ---------------- scripted demo ---------------- */
+
+// A reviewer without a microphone still hears the real agent; the answers are
+// scripted, and every spoken line and the grading are the production path.
+function demoAnswerFor(word) {
+  if (state.index === 1 && state.attempts === 0) return { text: "banana", confidence: 0.94 };
+  if (state.index === 2 && !state.repaired) return { text: "hmm, uh", confidence: 0.24 };
+  return { text: word.word, confidence: 0.93 };
+}
+
+function scheduleDemoAnswer() {
+  const request = ++state.listenRequest;
+  state.mode = "listening";
+  els.liveText.textContent = "";
+  setStatus("Demo is answering…", "listening");
+  setOrb("listening");
+  setTimeout(() => {
+    if (request !== state.listenRequest || state.mode !== "listening" || !state.current) return;
+    const plan = demoAnswerFor(state.current);
+    handleAnswer(plan.text, [], `🎙 (demo) ${plan.text}`, plan.confidence);
+  }, 1200);
 }
 
 /* ---------------- grading helpers ---------------- */
@@ -548,9 +609,12 @@ async function say(line, statusText, turn) {
   return turn === state.turn;
 }
 
-async function startSession() {
+async function startSession(demo = false) {
   stopSpeaking();
   stopListening();
+  stopMicCheck();
+  els.micCheck.hidden = true;
+  state.demo = demo;
   state.turn += 1;
   const turn = state.turn;
 
@@ -566,6 +630,8 @@ async function startSession() {
 
   els.transcript.innerHTML = "";
   els.startBtn.textContent = "Restart round";
+  els.demoBadge.hidden = !demo;
+  if (demo) disableTyping();
   updateHud();
 
   const intro =
@@ -575,14 +641,16 @@ async function startSession() {
 
   await micReady;
   if (turn !== state.turn) return;
-  const permission = micPermissionState();
-  if (permission === "denied") {
-    blockMic(
-      "Your browser is blocking the microphone, so I’ve switched on typing. " +
-        "Allow it from the address bar (the lock icon) and I’ll pick your voice up mid-round — or just type your answers below."
-    );
-  } else if (permission === "prompt") {
-    addBubble("agent", "Your browser will ask for microphone access — choose Allow so I can hear you.");
+  if (!demo) {
+    const permission = micPermissionState();
+    if (permission === "denied") {
+      blockMic(
+        "Your browser is blocking the microphone, so I’ve switched on typing. " +
+          "Allow it from the address bar (the lock icon) and I’ll pick your voice up mid-round — or just type your answers below."
+      );
+    } else if (permission === "prompt") {
+      addBubble("agent", "Your browser will ask for microphone access — choose Allow so I can hear you.");
+    }
   }
 
   askCurrentWord();
@@ -593,6 +661,7 @@ async function askCurrentWord() {
   state.current = word;
   state.attempts = 0;
   state.wordClosed = false;
+  state.repaired = false;
   state.mode = "speaking";
   const turn = ++state.turn;
 
@@ -630,7 +699,7 @@ async function nextWord() {
   await askCurrentWord();
 }
 
-async function handleAnswer(rawText, alternatives, displayText) {
+async function handleAnswer(rawText, alternatives, displayText, confidence = 1) {
   if (!state.current || state.mode === "over" || state.mode === "judging" || state.wordClosed) return;
   const heard = String(rawText || "").trim();
   if (!heard) return;
@@ -677,6 +746,16 @@ async function handleAnswer(rawText, alternatives, displayText) {
 
   const candidates = [heard, ...(Array.isArray(alternatives) ? alternatives : [])];
   const correct = candidates.some((candidate) => matchesTarget(candidate, word.word));
+
+  // Unclear audio gets one repair turn, so a misheard answer is not scored wrong.
+  const unclear = !correct && confidence > 0 && confidence < LOW_CONFIDENCE && !state.repaired;
+  if (unclear) {
+    state.repaired = true;
+    const line = `Sorry, I didn’t catch that clearly — I heard “${heard}”. Say the word again?`;
+    if (!(await say(line, "Say it once more…", turn))) return;
+    startListening();
+    return;
+  }
 
   if (correct) {
     const firstTry = state.attempts === 0;
@@ -754,6 +833,159 @@ async function finishRound() {
   await speak(closing);
 }
 
+/* ---------------- mic check ---------------- */
+
+const micCheck = { stream: null, audio: null, recognition: null, raf: 0, ready: false };
+
+function micCheckSeen() {
+  try {
+    return localStorage.getItem("lingo.micCheckSeen") === "1";
+  } catch (error) {
+    return true;
+  }
+}
+
+function markMicCheckSeen() {
+  try {
+    localStorage.setItem("lingo.micCheckSeen", "1");
+  } catch (error) {
+    /* private mode */
+  }
+}
+
+function stopMicCheck() {
+  if (micCheck.raf) {
+    cancelAnimationFrame(micCheck.raf);
+    micCheck.raf = 0;
+  }
+  if (micCheck.recognition) {
+    try { micCheck.recognition.stop(); } catch (error) { /* ignore */ }
+    micCheck.recognition = null;
+  }
+  if (micCheck.stream) {
+    micCheck.stream.getTracks().forEach((track) => track.stop());
+    micCheck.stream = null;
+  }
+  if (micCheck.audio) {
+    try { micCheck.audio.close(); } catch (error) { /* ignore */ }
+    micCheck.audio = null;
+  }
+  els.levelFill.style.width = "0%";
+}
+
+function openMicCheck() {
+  stopSpeaking();
+  stopMicCheck();
+  micCheck.ready = false;
+  els.micCheck.hidden = false;
+  els.micAllow.disabled = false;
+  els.micAllow.textContent = "Allow microphone";
+  els.micHeard.innerHTML = "Tap <strong>Allow microphone</strong> and say <strong>“testing one two three”</strong>.";
+  els.micDemo.classList.remove("btn-primary");
+}
+
+function closeMicCheck() {
+  els.micCheck.hidden = true;
+  stopMicCheck();
+  markMicCheckSeen();
+}
+
+async function runMicCheck() {
+  if (micCheck.ready) {
+    closeMicCheck();
+    startSession();
+    return;
+  }
+
+  els.micAllow.disabled = true;
+  els.micAllow.textContent = "Listening…";
+  els.micHeard.textContent = "Waiting for your voice…";
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    els.micHeard.textContent = "This browser has no microphone access. Watch the scripted demo to hear the agent.";
+    els.micDemo.classList.add("btn-primary");
+    return;
+  }
+
+  try {
+    micCheck.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (error) {
+    els.micAllow.disabled = false;
+    els.micAllow.textContent = "Try again";
+    els.micHeard.textContent =
+      "The browser blocked the microphone. Allow it from the address bar (the lock icon), or watch the scripted demo.";
+    els.micDemo.classList.add("btn-primary");
+    return;
+  }
+
+  startLevelMeter(micCheck.stream);
+  startMicTranscription();
+}
+
+function startLevelMeter(stream) {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    micCheck.audio = new AudioCtx();
+    const analyser = micCheck.audio.createAnalyser();
+    analyser.fftSize = 512;
+    micCheck.audio.createMediaStreamSource(stream).connect(analyser);
+    const data = new Uint8Array(analyser.fftSize);
+    const tick = () => {
+      analyser.getByteTimeDomainData(data);
+      let peak = 0;
+      for (let i = 0; i < data.length; i += 1) peak = Math.max(peak, Math.abs(data[i] - 128) / 128);
+      els.levelFill.style.width = `${Math.min(100, Math.round(peak * 260))}%`;
+      micCheck.raf = requestAnimationFrame(tick);
+    };
+    tick();
+  } catch (error) {
+    /* the meter is a nicety */
+  }
+}
+
+function startMicTranscription() {
+  if (!SpeechRecognitionCtor) {
+    els.micHeard.textContent =
+      "This browser can’t transcribe speech, but Lingo can still talk — watch the scripted demo.";
+    els.micDemo.classList.add("btn-primary");
+    return;
+  }
+
+  const recognition = new SpeechRecognitionCtor();
+  recognition.lang = recognitionLang;
+  recognition.interimResults = false;
+  recognition.continuous = false;
+
+  recognition.onresult = (event) => {
+    const heard = event.results[0][0].transcript;
+    micCheck.ready = true;
+    els.micHeard.textContent = `Heard “${heard}” — your mic works.`;
+    els.levelFill.style.width = "100%";
+    els.micAllow.textContent = "Start session";
+    els.micAllow.disabled = false;
+    stopMicCheck();
+  };
+
+  recognition.onerror = (event) => {
+    const code = event && event.error;
+    if (code === "no-speech") {
+      els.micHeard.textContent = "I didn’t hear anything — try saying “testing one two three” a bit louder.";
+    } else if (code === "not-allowed") {
+      els.micHeard.textContent =
+        "Microphone is blocked. Allow it from the address bar, or watch the scripted demo.";
+      els.micDemo.classList.add("btn-primary");
+    }
+  };
+
+  try {
+    recognition.start();
+  } catch (error) {
+    /* ignore */
+  }
+  micCheck.recognition = recognition;
+}
+
 /* ---------------- events ---------------- */
 
 els.startBtn.addEventListener("click", () => {
@@ -826,13 +1058,28 @@ els.muteBtn.addEventListener("click", () => {
   els.muteBtn.textContent = state.muted ? "Unmute agent voice" : "Mute agent voice";
 });
 
+els.micAllow.addEventListener("click", runMicCheck);
+els.micDemo.addEventListener("click", () => {
+  closeMicCheck();
+  startSession(true);
+});
+els.micSkip.addEventListener("click", closeMicCheck);
+els.micCheckBtn.addEventListener("click", openMicCheck);
+els.demoFooterBtn.addEventListener("click", () => {
+  stopSpeaking();
+  startSession(true);
+});
+
 window.addEventListener("beforeunload", () => {
   stopSpeaking();
   stopListening();
+  stopMicCheck();
 });
 
 if (!SpeechRecognitionCtor) enableTyping(true);
 
 const micReady = initMicPermission();
+
+if (!micCheckSeen()) openMicCheck();
 
 updateHud();

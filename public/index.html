@@ -57,6 +57,7 @@
 
       <p id="status" class="status" aria-live="polite">Tap “Start session” and I’ll quiz you out loud.</p>
       <p id="liveText" class="live-text" aria-live="polite"></p>
+      <span class="demo-badge" id="demoBadge" hidden>scripted demo — no microphone</span>
 
       <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0" id="progress">
         <span id="progressFill"></span>
@@ -98,7 +99,26 @@
     <span>Voice in / voice out runs in your browser — Chrome or Edge recommended.</span>
     <span class="dot" aria-hidden="true">•</span>
     <button id="muteBtn" class="link-btn" type="button">Mute agent voice</button>
+    <span class="dot" aria-hidden="true">•</span>
+    <button id="micCheckBtn" class="link-btn" type="button">Check mic</button>
+    <span class="dot" aria-hidden="true">•</span>
+    <button id="demoFooterBtn" class="link-btn" type="button">Hear a demo</button>
   </footer>
+</div>
+
+<div class="overlay" id="micCheck" hidden>
+  <div class="overlay-card" role="dialog" aria-modal="true" aria-labelledby="micCheckTitle">
+    <span class="tag" id="micCheckTag">mic check</span>
+    <h2 id="micCheckTitle">Let’s check your microphone</h2>
+    <p class="overlay-copy" id="micHeard">Tap <strong>Allow microphone</strong> and say <strong>“testing one two three”</strong>.</p>
+    <div class="level" aria-hidden="true"><span id="levelFill"></span></div>
+    <div class="overlay-actions">
+      <button id="micAllow" class="btn btn-primary" type="button">Allow microphone</button>
+      <button id="micDemo" class="btn" type="button">Hear a scripted demo</button>
+      <button id="micSkip" class="btn btn-ghost" type="button">Skip</button>
+    </div>
+    <p class="overlay-note">Audio never leaves your browser except to the browser’s own speech service.</p>
+  </div>
 </div>
 
 <script src="./app.js"></script>

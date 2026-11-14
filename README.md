@@ -16,9 +16,17 @@ speaks a clue out loud, listens to your answer, and tells you how you did.
 - Understands "repeat", "hint", "skip" and "I don't know" as spoken commands.
 - Plays rounds of five words from a 20-word set, with points, a streak and a
   round summary listing the words practised.
+- Asks you to say it again when recognition confidence is low, instead of
+  scoring a misheard answer as wrong (one repair turn per word).
+- Listens in Indian English (`en-IN`) and only falls back to `en-US` if the
+  browser has no Indian-English model.
 - Falls back to a typing box whenever the microphone is blocked, missing, or
   speech recognition is unavailable — and picks voice back up if you grant the
   mic mid-round, without restarting.
+- Opens with a microphone check (live level meter plus a transcript) on first
+  visit, and offers a **scripted demo** that runs the real agent end to end for
+  reviewers on Firefox or with the mic blocked. Trigger either later from the
+  footer: “Check mic” and “Hear a demo”.
 
 Everything runs in the browser: clues are spoken with `SpeechSynthesis`, answers
 are recognised with the Web Speech API. There is no backend, no API key and no
@@ -33,7 +41,8 @@ node server.mjs
 ```
 
 Then open http://127.0.0.1:4173 and press **Start session**. Allow microphone
-access when the browser asks.
+access when the browser asks. No microphone? Choose **Hear a scripted demo** on
+the mic-check card (or “Hear a demo” in the footer).
 
 Chrome or Edge is recommended: Firefox has no `SpeechRecognition`, so it drops to
 the typing fallback (the agent still speaks).
