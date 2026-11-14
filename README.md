@@ -4,6 +4,18 @@ A small browser prototype of a voice agent that helps people learn vocabulary. I
 speaks a clue out loud, listens to your answer, and tells you how you did.
 
 **Live:** https://vocabulary-voice-agent.onrender.com
+**Mirror:** https://site-457749e5d12b4431903cd5fbbef590b7.freebuff.page
+
+## Try it in a minute
+
+1. Open the live link in **Chrome or Edge** (they carry the Web Speech API).
+2. Allow the microphone on the check card, then press **Start session**.
+3. Say the word when Lingo asks. Say “repeat”, “hint”, “skip” or “I don’t know”
+   any time.
+
+No microphone, or reviewing on Firefox? Press **Hear a scripted demo** on the
+check card — it runs the real agent through a full round with canned answers, so
+the behaviour is visible without any device permission.
 
 ## What it does
 
@@ -44,9 +56,13 @@ words. It is **off by default** and the app is fully usable without it.
 - Set `GEMINI_API_KEY` on the host (Worker secret, or a local `.env` for
   `node server.mjs`). The key is only read server-side and never shipped to the
   browser.
-- Model: `gemini-3.5-flash-lite`, JSON response schema, 9 s timeout, one retry
-  on 429/500/503, then a fallback model; output is sanitised (word shape, no
-  word inside its definition, example must contain `___`).
+- Models: `gemini-3.5-flash-lite` first, then `gemini-2.5-flash-lite` and
+  `gemini-3.5-flash`, because the free tier answers `503 high demand` in bursts.
+  Each is retried with backoff; the client allows 16 s before giving up.
+- A successful round is cached in the Worker for 10 minutes, so repeat visits are
+  instant and don't spend quota.
+- Responses use a JSON response schema and are sanitised (word shape, no word
+  inside its definition, example must contain `___`).
 - Only **text** prompts are sent to Google. In this design no audio is uploaded,
   so the “audio never leaves your browser” claim still holds. Note that Gemini's
   free tier allows Google to use prompts to improve its products; use a billed
@@ -73,13 +89,34 @@ the typing fallback (the agent still speaks).
 | --- | --- |
 | `public/index.html` | Markup for the single page |
 | `public/lingo.css` | Styles |
-| `public/app.js` | Agent logic: speech in/out, grading, round flow, mic permission handling |
-| `server.mjs` | Zero-dependency local static server |
-| `worker.js`, `deploy.json` | Static-asset Worker used for the Cloudflare deployment |
+| `public/app.js` | Agent logic: speech in/out, grading, round flow, mic permission handling, AI round fetch |
+| `server.mjs` | Zero-dependency local server: static files plus `/api/round` |
+| `worker.js` | Worker: static assets plus `/api/round` with the Gemini generator |
+| `deploy.json` | Cloudflare deployment manifest |
+
+## Built with
+
+- **Vanilla JS, no framework, no build step** — one page, so the whole flow stays
+  readable in `public/app.js`.
+- **Web Speech API** — `SpeechSynthesis` for the agent’s voice, `SpeechRecognition`
+  (`en-IN`) for answers. Both run locally in the browser.
+- **Gemini 3.5 Flash-Lite** — optional fresh word sets, called from a tiny Worker
+  route so the key never reaches the client.
+- **Cloudflare Workers + Render** — the same static app deployed twice; the Worker
+  also hosts the AI endpoint, and the Render site calls it cross-origin.
 
 ## Deployment
 
 - **Render** — static site, branch `main`, publish directory `public`, no build
   command; auto-deploys on push.
-- **Cloudflare Workers** — `worker.js` serves `public/` as static assets, using
-  `deploy.json` as the manifest.
+- **Cloudflare Workers** — `worker.js` serves `public/` as static assets and the
+  `/api/round` route, using `deploy.json` as the manifest.
+
+## Known limits
+
+- Speech recognition is the browser’s, so accuracy varies with the device and the
+  room; the app asks you to repeat when confidence is low rather than guess.
+- Firefox has no `SpeechRecognition` (typing fallback), and Safari’s support is
+  partial — Chrome or Edge gives the intended experience.
+- The Gemini free tier is rate-limited and occasionally busy; the app falls back
+  to the bundled word list rather than failing.
