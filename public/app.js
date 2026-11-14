@@ -835,7 +835,7 @@ async function finishRound() {
 
 /* ---------------- mic check ---------------- */
 
-const micCheck = { stream: null, audio: null, recognition: null, raf: 0, ready: false };
+const micCheck = { stream: null, audio: null, recognition: null, raf: 0, timer: 0, ready: false };
 
 function micCheckSeen() {
   try {
@@ -854,6 +854,10 @@ function markMicCheckSeen() {
 }
 
 function stopMicCheck() {
+  if (micCheck.timer) {
+    clearTimeout(micCheck.timer);
+    micCheck.timer = 0;
+  }
   if (micCheck.raf) {
     cancelAnimationFrame(micCheck.raf);
     micCheck.raf = 0;
@@ -960,6 +964,8 @@ function startMicTranscription() {
   recognition.onresult = (event) => {
     const heard = event.results[0][0].transcript;
     micCheck.ready = true;
+    clearTimeout(micCheck.timer);
+    micCheck.timer = 0;
     els.micHeard.textContent = `Heard “${heard}” — your mic works.`;
     els.levelFill.style.width = "100%";
     els.micAllow.textContent = "Start session";
@@ -984,6 +990,17 @@ function startMicTranscription() {
     /* ignore */
   }
   micCheck.recognition = recognition;
+
+  // A silent or wrong input device never errors, it just never answers.
+  micCheck.timer = setTimeout(() => {
+    if (micCheck.ready) return;
+    stopMicCheck();
+    els.micAllow.disabled = false;
+    els.micAllow.textContent = "Try again";
+    els.micHeard.textContent =
+      "I didn’t hear anything. Check the microphone picked in your browser, or watch the scripted demo instead.";
+    els.micDemo.classList.add("btn-primary");
+  }, 12000);
 }
 
 /* ---------------- events ---------------- */
