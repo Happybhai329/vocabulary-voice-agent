@@ -105,7 +105,7 @@ export async function generateWords({ apiKey, count = 5, level = "B2", model = M
   let lastError = new Error("no_attempt");
   try {
     for (const current of models) {
-      for (let attempt = 0; attempt < 2; attempt += 1) {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
           const words = sanitizeWords(await callModel(current, apiKey, prompt, controller.signal), safeCount);
           if (words.length >= 3) return { words, model: current };
@@ -115,7 +115,7 @@ export async function generateWords({ apiKey, count = 5, level = "B2", model = M
           lastError = error;
           const retryable = error.status === 429 || error.status === 503 || error.status === 500;
           if (!retryable || controller.signal.aborted) break;
-          await sleep(attempt === 0 ? 300 : 800);
+          await sleep([300, 900][attempt] || 900);
         }
       }
     }
@@ -132,6 +132,10 @@ const ALLOWED_ORIGINS = new Set([
 
 // Cheap guard so a public link can't burn the whole free quota.
 const quota = { windowStart: 0, used: 0 };
+
+// Reuse a recent round: makes repeat visits instant and saves quota.
+const roundCache = new Map();
+const CACHE_MS = 10 * 60 * 1000;
 
 function withinQuota() {
   const now = Date.now();
@@ -178,8 +182,15 @@ async function handleRound(request, env) {
     payload = {};
   }
 
+  const key = `${Number(payload.count) || 5}:${String(payload.level || "B2").slice(0, 8)}`;
+  const cached = roundCache.get(key);
+  if (cached && Date.now() - cached.at < CACHE_MS) {
+    return json({ words: cached.words, source: "ai", model: cached.model, cached: true }, 200, cors);
+  }
+
   try {
     const { words, model: usedModel } = await generateWords({ apiKey, count: payload.count, level: payload.level });
+    roundCache.set(key, { words, model: usedModel, at: Date.now() });
     return json({ words, source: "ai", model: usedModel }, 200, cors);
   } catch (error) {
     const detail = error && error.detail ? `${error.message}: ${error.detail}` : String((error && error.message) || error);
