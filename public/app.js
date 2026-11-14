@@ -51,6 +51,7 @@ const els = {
   transcript: document.getElementById("transcript"),
   muteBtn: document.getElementById("muteBtn"),
   demoBadge: document.getElementById("demoBadge"),
+  aiBadge: document.getElementById("aiBadge"),
   micCheck: document.getElementById("micCheck"),
   micAllow: document.getElementById("micAllow"),
   micDemo: document.getElementById("micDemo"),
@@ -609,6 +610,35 @@ async function say(line, statusText, turn) {
   return turn === state.turn;
 }
 
+// Words can come from the Worker's Gemini route; without it, the built-in list.
+const AI_API_BASE = "https://site-457749e5d12b4431903cd5fbbef590b7.freebuff.page";
+
+async function fetchAiRound() {
+  const bases = [location.origin];
+  if (location.origin !== AI_API_BASE) bases.push(AI_API_BASE);
+
+  for (const base of bases) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 9000);
+    try {
+      const response = await fetch(`${base}/api/round`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ count: ROUND_SIZE, level: "B2" }),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const data = await response.json();
+      if (Array.isArray(data.words) && data.words.length >= 3) return data.words.slice(0, ROUND_SIZE);
+    } catch (error) {
+      /* offline, blocked or slow: fall through to the built-in words */
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
+
 async function startSession(demo = false) {
   stopSpeaking();
   stopListening();
@@ -618,7 +648,7 @@ async function startSession(demo = false) {
   state.turn += 1;
   const turn = state.turn;
 
-  state.queue = shuffle(WORDS).slice(0, ROUND_SIZE);
+  state.queue = [];
   state.index = 0;
   state.answered = 0;
   state.correct = 0;
@@ -631,7 +661,15 @@ async function startSession(demo = false) {
   els.transcript.innerHTML = "";
   els.startBtn.textContent = "Restart round";
   els.demoBadge.hidden = !demo;
+  els.aiBadge.hidden = true;
   if (demo) disableTyping();
+  updateHud();
+
+  setStatus("Preparing your words…", "idle");
+  const aiWords = demo ? null : await fetchAiRound();
+  if (turn !== state.turn) return;
+  state.queue = aiWords || shuffle(WORDS).slice(0, ROUND_SIZE);
+  els.aiBadge.hidden = !aiWords;
   updateHud();
 
   const intro =
@@ -686,6 +724,7 @@ async function repeatClue() {
 }
 
 function hintSentence(word) {
+  if (word.hint) return `Here’s a hint: ${word.hint}.`;
   const first = word.word.charAt(0).toUpperCase();
   return `Here’s a hint: it starts with the letter ${first} and has ${word.word.length} letters.`;
 }

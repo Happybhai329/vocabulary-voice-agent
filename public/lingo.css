@@ -422,6 +422,11 @@ body {
 
 .demo-badge[hidden] { display: none; }
 
+.ai-badge {
+  color: var(--cyan);
+  border-color: rgba(75, 225, 255, 0.4);
+}
+
 /* mic check overlay */
 .overlay {
   position: fixed;

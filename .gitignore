@@ -1,3 +1,6 @@
 .freebuff/
 node_modules/
 *.log
+.env
+.env.local
+.gemini-key

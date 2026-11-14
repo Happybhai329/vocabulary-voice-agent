@@ -27,10 +27,30 @@ speaks a clue out loud, listens to your answer, and tells you how you did.
   visit, and offers a **scripted demo** that runs the real agent end to end for
   reviewers on Firefox or with the mic blocked. Trigger either later from the
   footer: “Check mic” and “Hear a demo”.
+- With a Gemini key configured, each round asks the model for five fresh
+  workplace-English (B2) words instead of using the bundled list, showing an
+  “AI-generated words” badge. Without the key, or on any error, it silently
+  falls back to the bundled 20 words.
 
-Everything runs in the browser: clues are spoken with `SpeechSynthesis`, answers
-are recognised with the Web Speech API. There is no backend, no API key and no
-account.
+Clues are spoken with `SpeechSynthesis` and answers are recognised with the Web
+Speech API, so the audio path stays in the browser — no account, and no audio
+leaves the device.
+
+## Optional AI rounds
+
+The one server-side feature is `/api/round`, which asks Gemini for a fresh set of
+words. It is **off by default** and the app is fully usable without it.
+
+- Set `GEMINI_API_KEY` on the host (Worker secret, or a local `.env` for
+  `node server.mjs`). The key is only read server-side and never shipped to the
+  browser.
+- Model: `gemini-3.5-flash-lite`, JSON response schema, 9 s timeout, one retry
+  on 429/500/503, then a fallback model; output is sanitised (word shape, no
+  word inside its definition, example must contain `___`).
+- Only **text** prompts are sent to Google. In this design no audio is uploaded,
+  so the “audio never leaves your browser” claim still holds. Note that Gemini's
+  free tier allows Google to use prompts to improve its products; use a billed
+  project for anything real.
 
 ## Run it locally
 
