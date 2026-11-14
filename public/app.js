@@ -619,7 +619,7 @@ async function fetchAiRound() {
 
   for (const base of bases) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 9000);
+    const timer = setTimeout(() => controller.abort(), 16000);
     try {
       const response = await fetch(`${base}/api/round`, {
         method: "POST",
